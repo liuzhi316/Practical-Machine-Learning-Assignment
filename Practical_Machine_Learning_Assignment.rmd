@@ -1,0 +1,114 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Zhi Liu"
+date: "March 7, 2017"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, The goal of this project is to predict the manner in which they did the exercise using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+## Data collection
+
+Reading data from URL and labeling NA values
+```{r}
+trainingUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+trainSet <- read.csv(trainingUrl, header = T, na.strings = c("NA", "", "DIV/0!"))
+ValidationSet <- read.csv(testingUrl, header = T, na.strings = c("NA", "", "DIV/0!"))
+```
+
+## Data summarization and cleaning
+
+```{r}
+# Summarize raw data
+str(trainSet)
+dim(trainSet)
+dim(ValidationSet)
+# Remove variables with only NA values
+subTrain <- trainSet[,!apply(trainSet, 2, function(x) {sum(is.na(x))==19216})]
+subValidation <- ValidationSet[,!apply(ValidationSet, 2, function(x) {sum(is.na(x))==20})]
+# Remove non-related columns
+newTrain <- subTrain[, c(8:dim(subTrain)[2])]
+newValidation <- subValidation[, c(8:dim(subValidation)[2])]
+summary(newTrain)
+```
+
+## Data preprocessing
+
+```{r}
+# Load packages
+library(caret)
+library(ggplot2)
+library(rattle)
+library(randomForest)
+library(survival)
+# Remove near-zero variables
+checkZero <- nearZeroVar(newTrain, saveMetrics=T)
+table(checkZero$zeroVar)
+# data preprocessing
+preobj <- preProcess(newTrain[, 1:52], method = c("center", "scale", "knnImpute"))
+newdata <- predict(preobj, newTrain[, c(1:52)])
+newdata$classe <- newTrain$classe
+validation <- predict(preobj, newValidation[, c(1:52)])
+validation$problem_id <- newValidation$problem_id
+```
+
+## Data splitting
+
+```{r}
+inTrain <- createDataPartition(y = newdata$classe, p=0.7, list = F)
+Training <- newdata[inTrain,]
+Testing <- newdata[-inTrain,]
+```
+
+## Train Model1: Random Forest
+
+Since Random Forest works as an extension to bagging for classification and regression trees, the first model I used for model prediction is random forest. 
+```{r}
+# set seed
+set.seed(11111)
+# create model with cross validation
+modelfit1 <- train(classe~., data=Training, method="rf", trControl=trainControl(method = "cv", number = 5))
+# plot the importance of variables
+plot(varImp(modelfit1), main="The importance of variables in Model1")
+# plot shown the most important n variables
+plot(varImp(modelfit1), top=20,  main="The most importance 20 variables in Model1")
+```
+
+## Data validation on Model1
+
+```{r}
+pred_1 <- predict(modelfit1, newdata=Testing[, 1:52])
+confusionMatrix(pred_1, Testing$classe)
+```
+
+## Train Model2: GBM(boost with trees)
+
+Random Forest has great accuracy, but I will add another model here for the comparision
+```{r}
+modelfit2 <- train(classe~., data=Training, method="gbm", verbose=F)
+pred_2 <- predict(modelfit2, newdata=Testing[, 1:52])
+confusionMatrix(pred_2, Testing$classe)
+```
+
+## Apply model1 to validation dataset
+
+By comparing two models, ramdom forest model has better accuracy, so I use this model on validation dataset
+```{r}
+prediction <- predict(modelfit1, newdata=validation[, 1:52])
+```
+
+## Conclusion
+
+The Random Forest method worked very well on prediction here with the ConfusionMatrix achieved 99.6% accuracy. This model was used for the final calculations. The prediction for validation data No.1-20 were:
+```{r}
+prediction
+```
